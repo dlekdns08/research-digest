@@ -13,9 +13,14 @@ from .cluster import cluster_and_dedup
 from .config import get_settings
 from .db import ArxivDBNotFoundError, fetch_top_papers
 from .deepread import deep_read
-from .deliver import post_to_slack, print_to_console
+from .deliver import post_to_slack, print_to_console, send_email
 from .rank import rank_personalized
-from .render import PaperWithSummary, render_markdown, render_slack_blocks
+from .render import (
+    PaperWithSummary,
+    render_email_html,
+    render_markdown,
+    render_slack_blocks,
+)
 from .summarize import summarize_paper
 
 
@@ -28,6 +33,7 @@ def cli() -> None:
 @click.option("--top", "top_n", type=int, default=None, help="Number of papers to include.")
 @click.option("--since-days", type=int, default=1, help="Only papers published within N days.")
 @click.option("--slack/--no-slack", default=False, help="Post to Slack webhook.")
+@click.option("--email/--no-email", default=False, help="Send the digest via SMTP (Gmail by default).")
 @click.option(
     "--personalize/--no-personalize",
     default=None,
@@ -48,6 +54,7 @@ def run(
     top_n: int | None,
     since_days: int,
     slack: bool,
+    email: bool,
     personalize: bool | None,
     include_seen: bool,
     dry_run: bool,
@@ -154,6 +161,31 @@ def run(
             console.print("[green]Posted to Slack.[/green]")
         except Exception as e:  # noqa: BLE001
             console.print(f"[red]error:[/red] slack post failed: {e}")
+            sys.exit(1)
+
+    if email:
+        if not settings.smtp_password:
+            console.print(
+                "[red]error:[/red] --email passed but DIGEST_SMTP_PASSWORD unset "
+                "(use a Gmail app password, not your account password)."
+            )
+            sys.exit(2)
+        try:
+            from datetime import date
+            send_email(
+                subject=f"[Research Digest] Top {len(items)} papers — {date.today().isoformat()}",
+                html_body=render_email_html(items),
+                text_body=md,
+                sender=settings.email_from,
+                recipient=settings.email_to,
+                smtp_host=settings.smtp_host,
+                smtp_port=settings.smtp_port,
+                smtp_user=settings.smtp_user or settings.email_from,
+                smtp_password=settings.smtp_password,
+            )
+            console.print(f"[green]Sent email → {settings.email_to}.[/green]")
+        except Exception as e:  # noqa: BLE001
+            console.print(f"[red]error:[/red] email send failed: {e}")
             sys.exit(1)
 
 
