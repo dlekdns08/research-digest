@@ -64,11 +64,42 @@ jobs:
           SIZE=$(stat -c%s "$DB" 2>/dev/null || stat -f%z "$DB")
           echo "arxiv-graph DB: $DB ($SIZE bytes)"
 
+          # Diagnostic: inspect arxiv-graph DB contents so we can tell whether
+          # "No papers found for the selected window" is a filter issue vs
+          # an ingestion issue. Non-fatal: if sqlite3 is missing, warn & move on.
+          if ! command -v sqlite3 >/dev/null 2>&1; then
+            echo "::warning::sqlite3 not found; attempting install"
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get update -y >/dev/null 2>&1 || true
+              sudo apt-get install -y sqlite3 >/dev/null 2>&1 || true
+            else
+              apt-get update -y >/dev/null 2>&1 || true
+              apt-get install -y sqlite3 >/dev/null 2>&1 || true
+            fi
+          fi
+          if command -v sqlite3 >/dev/null 2>&1; then
+            echo "=== arxiv-graph DB stats ==="
+            sqlite3 "file:$DB?mode=ro" -readonly \
+              -cmd ".headers on" \
+              -cmd ".mode column" \
+              "SELECT COUNT(*) AS total_papers FROM papers;
+               SELECT
+                 SUM(CASE WHEN published_at >= datetime('now','-1 day')  THEN 1 ELSE 0 END) AS last_1d,
+                 SUM(CASE WHEN published_at >= datetime('now','-7 day')  THEN 1 ELSE 0 END) AS last_7d,
+                 SUM(CASE WHEN published_at >= datetime('now','-30 day') THEN 1 ELSE 0 END) AS last_30d
+               FROM papers;
+               SELECT MAX(published_at) AS newest, MIN(published_at) AS oldest FROM papers;" \
+              || echo "::warning::sqlite3 diagnostic query failed (non-fatal)"
+            echo "=== end arxiv-graph DB stats ==="
+          else
+            echo "::warning::sqlite3 unavailable after install attempt; skipping DB stats (digest will still run)"
+          fi
+
       - name: Run digest (dry-run preview)
-        run: uv run research-digest run --top 10 --since-days 1 --dry-run
+        run: uv run research-digest run --top 10 --since-days 7 --dry-run
 
       - name: Run digest + email
-        run: uv run research-digest run --top 10 --email --since-days 1
+        run: uv run research-digest run --top 10 --email --since-days 7
 
       - name: Notify on failure
         if: failure()
