@@ -24,6 +24,9 @@ research-digest run --top 5 --since-days 1
 # Post to Slack as well
 research-digest run --slack
 
+# Send the digest as an HTML email (top 10)
+research-digest run --top 10 --email
+
 # Force personalization on/off
 research-digest run --personalize
 research-digest run --no-personalize
@@ -75,6 +78,38 @@ All env vars use the `DIGEST_` prefix and can live in `.env`:
 | `DIGEST_VOYAGE_API_KEY` | — | Optional Voyage AI key for embeddings |
 | `DIGEST_VOYAGE_MODEL` | `voyage-3` | Voyage embedding model |
 | `DIGEST_STATE_DIR` | `~/.research-digest` | Dir for feedback.db + deepread cache |
+| `DIGEST_EMAIL_FROM` | `dlekdns08@gmail.com` | Sender Gmail (must have 2FA + app password) |
+| `DIGEST_EMAIL_TO` | `dlekdns07@naver.com` | Recipient address |
+| `DIGEST_SMTP_HOST` | `smtp.gmail.com` | SMTP server |
+| `DIGEST_SMTP_PORT` | `465` | `465` (SSL) or `587` (STARTTLS) |
+| `DIGEST_SMTP_USER` | same as `EMAIL_FROM` | SMTP login user |
+| `DIGEST_SMTP_PASSWORD` | — | Gmail 16-char **app password** (required for `--email`) |
+
+## Daily at 07:00 (macOS launchd)
+
+`launchd/com.research-digest.daily.plist` schedules `research-digest run --top 10 --email --since-days 1` every day at 07:00 local time.
+
+```bash
+# 1) Fill in the absolute project path in the plist
+sed -i '' "s|<PROJECT_DIR>|$PWD|g" launchd/com.research-digest.daily.plist
+
+# 2) Install and start
+cp launchd/com.research-digest.daily.plist ~/Library/LaunchAgents/
+launchctl load -w ~/Library/LaunchAgents/com.research-digest.daily.plist
+
+# 3) (Optional) Run once right now to verify
+launchctl start com.research-digest.daily
+tail -f ~/.research-digest/logs/digest.err.log
+```
+
+Uninstall:
+
+```bash
+launchctl unload -w ~/Library/LaunchAgents/com.research-digest.daily.plist
+rm ~/Library/LaunchAgents/com.research-digest.daily.plist
+```
+
+If the Mac is asleep at 07:00, launchd fires the job when it wakes.
 
 ## What it does
 
