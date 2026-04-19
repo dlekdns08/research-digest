@@ -32,10 +32,9 @@ jobs:
       DIGEST_VOYAGE_API_KEY: ${{ secrets.DIGEST_VOYAGE_API_KEY }}
       DIGEST_EMAIL_FROM: dlekdns08@gmail.com
       DIGEST_EMAIL_TO: dlekdns07@naver.com
-      # arxiv-graph가 같은 runner/유저에서 돌았다면 기본값(~/.arxiv-graph/data/arxiv_graph.db)
-      # 이 그대로 동작. 다른 유저/경로라면 절대경로로 override:
-      # DIGEST_ARXIV_DB_PATH: /app/actions-runner-arxiv/.arxiv-graph/data/arxiv_graph.db
-      DIGEST_STATE_DIR: ${{ github.workspace }}/../.digest-state
+      # arxiv-graph는 별도 runner에서 돌지만 같은 서버라 DB 파일을 직접 읽음.
+      # 이 digest runner가 root로 돌지 않을 수 있으니 절대경로로 고정.
+      DIGEST_ARXIV_DB_PATH: /root/.arxiv-graph/data/arxiv_graph.db
 
     steps:
       - name: Checkout
@@ -54,14 +53,12 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Verify arxiv-graph DB exists
+      - name: Verify arxiv-graph DB is readable
         run: |
-          DB="${DIGEST_ARXIV_DB_PATH:-$HOME/.arxiv-graph/data/arxiv_graph.db}"
-          if [ ! -f "$DB" ]; then
-            echo "::error::arxiv-graph DB not found at $DB"
-            echo "Available paths to check:"
-            ls -la "$HOME/.arxiv-graph/data/" 2>/dev/null || echo "  (no ~/.arxiv-graph/data/)"
-            find /app -name "arxiv_graph.db" 2>/dev/null | head -5 || true
+          DB="$DIGEST_ARXIV_DB_PATH"
+          if [ ! -r "$DB" ]; then
+            echo "::error::arxiv-graph DB not readable at $DB"
+            ls -la "$(dirname "$DB")" 2>/dev/null || true
             exit 2
           fi
           SIZE=$(stat -c%s "$DB" 2>/dev/null || stat -f%z "$DB")
