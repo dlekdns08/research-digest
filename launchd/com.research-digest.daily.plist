@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Daily research-digest runner — fires every day at 07:00 local time,
+  emails the top-10 papers to DIGEST_EMAIL_TO.
+
+  Install:
+    cp launchd/com.research-digest.daily.plist ~/Library/LaunchAgents/
+    launchctl load -w ~/Library/LaunchAgents/com.research-digest.daily.plist
+
+  Uninstall:
+    launchctl unload -w ~/Library/LaunchAgents/com.research-digest.daily.plist
+    rm ~/Library/LaunchAgents/com.research-digest.daily.plist
+
+  Tail logs:
+    tail -f ~/.research-digest/logs/digest.out.log
+    tail -f ~/.research-digest/logs/digest.err.log
+
+  NOTE: replace <PROJECT_DIR> with the absolute path to this repo before
+  installing. The easiest way is:
+    sed -i '' "s|<PROJECT_DIR>|$PWD|g" launchd/com.research-digest.daily.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.research-digest.daily</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd &lt;PROJECT_DIR&gt; &amp;&amp; uv run research-digest run --top 10 --email --since-days 1</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>&lt;PROJECT_DIR&gt;</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <!-- If the Mac was asleep at 07:00, run as soon as it wakes. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/idaun/.research-digest/logs/digest.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/idaun/.research-digest/logs/digest.err.log</string>
+
+  <!-- Inherit PATH so uv / python are findable from the launchd context. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
