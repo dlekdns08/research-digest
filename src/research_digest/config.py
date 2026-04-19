@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     voyage_api_key: str = Field(default="", description="Voyage AI API key (optional)")
     voyage_model: str = Field(default="voyage-3")
 
+    # ── Email delivery (SMTP) ──────────────────────────────────────────
+    # Designed for Gmail: turn on 2FA, generate an app password, and
+    # set smtp_password to that 16-char string (NOT your Gmail login).
+    email_from: str = Field(default="dlekdns08@gmail.com")
+    email_to: str = Field(default="dlekdns07@naver.com")
+    smtp_host: str = Field(default="smtp.gmail.com")
+    smtp_port: int = Field(default=465)
+    smtp_user: str = Field(default="")       # defaults to email_from if blank
+    smtp_password: str = Field(default="")   # Gmail app password (required for --email)
+
 
 def get_settings() -> Settings:
     return Settings()
