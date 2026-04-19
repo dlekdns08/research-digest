@@ -58,6 +58,53 @@ def render_markdown(items: list[PaperWithSummary]) -> str:
     return "\n".join(lines)
 
 
+def render_email_html(items: list[PaperWithSummary]) -> str:
+    """Render the digest as a simple inline-styled HTML email body."""
+    import html as _html
+
+    if not items:
+        return (
+            "<h1>Today's Research Digest</h1>"
+            "<p><em>No papers found for the selected window.</em></p>"
+        )
+
+    parts: list[str] = [
+        "<div style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
+        "max-width:720px;margin:0 auto;color:#1a1a1a;line-height:1.55;\">",
+        "<h1 style=\"border-bottom:2px solid #eee;padding-bottom:8px;\">"
+        "Today's Research Digest</h1>",
+    ]
+    for i, it in enumerate(items, 1):
+        p = it.paper
+        link = p.pdf_url or _arxiv_url(p.arxiv_id)
+        title = _html.escape(p.title)
+        summary_html = _html.escape(it.summary.strip()).replace("\n", "<br>")
+        meta = _html.escape(_meta_line(p, it))
+
+        parts.append(
+            f"<h2 style=\"margin-top:28px;font-size:18px;\">"
+            f"{i}. <a href=\"{_html.escape(link)}\" "
+            f"style=\"color:#0b5ed7;text-decoration:none;\">{title}</a></h2>"
+        )
+        parts.append(
+            f"<div style=\"color:#666;font-size:12px;font-family:ui-monospace,monospace;"
+            f"margin-bottom:8px;\">{meta}</div>"
+        )
+        parts.append(f"<div>{summary_html}</div>")
+        if it.related_ids:
+            rel = ", ".join(_html.escape(aid) for aid in it.related_ids)
+            parts.append(
+                f"<div style=\"color:#888;font-size:12px;margin-top:6px;\">"
+                f"관련 논문: {rel}</div>"
+            )
+        parts.append(
+            f"<div style=\"margin-top:8px;font-size:12px;\">"
+            f"<a href=\"{_html.escape(link)}\" style=\"color:#0b5ed7;\">arxiv/pdf →</a></div>"
+        )
+    parts.append("</div>")
+    return "".join(parts)
+
+
 def render_slack_blocks(items: list[PaperWithSummary]) -> list[dict]:
     blocks: list[dict] = [
         {
