@@ -1,0 +1,87 @@
+name: Daily Research Digest
+
+on:
+  schedule:
+    # 07:00 KST = 22:00 UTC (전날). GHA schedule은 5~15분 지연될 수 있음.
+    # arxiv-graph daily_crawl은 19:00 KST (10:00 UTC)에 끝나므로 그 이후로 충분.
+    - cron: "0 22 * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/daily-digest.yml"
+
+permissions:
+  issues: write
+
+jobs:
+  digest:
+    name: Summarize & Email
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
+
+    env:
+      DIGEST_ANTHROPIC_API_KEY: ${{ secrets.DIGEST_ANTHROPIC_API_KEY }}
+      DIGEST_SMTP_PASSWORD: ${{ secrets.DIGEST_SMTP_PASSWORD }}
+      DIGEST_VOYAGE_API_KEY: ${{ secrets.DIGEST_VOYAGE_API_KEY }}
+      DIGEST_EMAIL_FROM: dlekdns08@gmail.com
+      DIGEST_EMAIL_TO: dlekdns07@naver.com
+      # arxiv-graph가 같은 runner/유저에서 돌았다면 기본값(~/.arxiv-graph/data/arxiv_graph.db)
+      # 이 그대로 동작. 다른 유저/경로라면 절대경로로 override:
+      # DIGEST_ARXIV_DB_PATH: /app/actions-runner-arxiv/.arxiv-graph/data/arxiv_graph.db
+      DIGEST_STATE_DIR: ${{ github.workspace }}/../.digest-state
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Verify arxiv-graph DB exists
+        run: |
+          DB="${DIGEST_ARXIV_DB_PATH:-$HOME/.arxiv-graph/data/arxiv_graph.db}"
+          if [ ! -f "$DB" ]; then
+            echo "::error::arxiv-graph DB not found at $DB"
+            echo "Available paths to check:"
+            ls -la "$HOME/.arxiv-graph/data/" 2>/dev/null || echo "  (no ~/.arxiv-graph/data/)"
+            find /app -name "arxiv_graph.db" 2>/dev/null | head -5 || true
+            exit 2
+          fi
+          SIZE=$(stat -c%s "$DB" 2>/dev/null || stat -f%z "$DB")
+          echo "arxiv-graph DB: $DB ($SIZE bytes)"
+
+      - name: Run digest (dry-run preview)
+        run: uv run research-digest run --top 10 --since-days 1 --dry-run
+
+      - name: Run digest + email
+        run: uv run research-digest run --top 10 --email --since-days 1
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Digest] Daily run failed on ${new Date().toISOString().slice(0,10)}`,
+              body: `Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              labels: ["bug", "automated"]
+            })
