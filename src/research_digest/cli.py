@@ -73,13 +73,56 @@ def run(
         console.print(f"[red]error:[/red] {e}")
         sys.exit(2)
 
+    db_rows = len(pool)
+    seen = feedback.seen_set() if not include_seen else set()
+    console.print(
+        f"[dim]diagnostic: db_rows={db_rows} seen_count={len(seen)} "
+        f"since_days={since_days}[/dim]"
+    )
+
     # Filter out already-seen papers unless the user asked to include them.
     if not include_seen:
-        seen = feedback.seen_set()
         pool = [p for p in pool if p.arxiv_id not in seen]
 
+    attempts = [f"since_days={since_days}, skip_seen={not include_seen}"]
+
+    # Fallback 1: DB had rows but the seen filter emptied the pool — retry including seen.
+    if not pool and db_rows > 0 and not include_seen:
+        console.print(
+            "[yellow]All candidates were already seen; retrying with include_seen=True.[/yellow]"
+        )
+        attempts.append(f"since_days={since_days}, skip_seen=False")
+        try:
+            pool = fetch_top_papers(
+                settings.arxiv_db_path, n=pool_size, since_days=since_days
+            )
+        except ArxivDBNotFoundError as e:
+            console.print(f"[red]error:[/red] {e}")
+            sys.exit(2)
+        include_seen = True  # we've decided to surface seen papers for this run
+
+    # Fallback 2: DB itself returned 0 rows — widen the window and retry once.
+    if not pool and db_rows == 0:
+        wider = max(since_days * 3, 7)
+        console.print(
+            f"[yellow]DB returned 0 rows for since_days={since_days}; "
+            f"retrying with since_days={wider}.[/yellow]"
+        )
+        attempts.append(f"since_days={wider}, skip_seen={not include_seen}")
+        try:
+            pool = fetch_top_papers(settings.arxiv_db_path, n=pool_size, since_days=wider)
+        except ArxivDBNotFoundError as e:
+            console.print(f"[red]error:[/red] {e}")
+            sys.exit(2)
+        if not include_seen:
+            pool = [p for p in pool if p.arxiv_id not in seen]
+
     if not pool:
-        console.print("[yellow]No papers found for the selected window.[/yellow]")
+        console.print(
+            "[yellow]No papers found after fallbacks. Tried: "
+            + "; ".join(attempts)
+            + ".[/yellow]"
+        )
         print_to_console(render_markdown([]))
         return
 
