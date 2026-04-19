@@ -85,31 +85,35 @@ All env vars use the `DIGEST_` prefix and can live in `.env`:
 | `DIGEST_SMTP_USER` | same as `EMAIL_FROM` | SMTP login user |
 | `DIGEST_SMTP_PASSWORD` | — | Gmail 16-char **app password** (required for `--email`) |
 
-## Daily at 07:00 (macOS launchd)
+## Daily at 07:00 KST (GitHub Actions, self-hosted runner)
 
-`launchd/com.research-digest.daily.plist` schedules `research-digest run --top 10 --email --since-days 1` every day at 07:00 local time.
+`.github/workflows/daily-digest.yml` schedules the digest every day at
+**22:00 UTC = 07:00 KST** on a self-hosted runner. Assumes arxiv-graph's
+`daily_crawl.yml` runs on the same server (different runner is fine) so the
+sqlite DB at `/root/.arxiv-graph/data/arxiv_graph.db` is fresh by morning.
 
-```bash
-# 1) Fill in the absolute project path in the plist
-sed -i '' "s|<PROJECT_DIR>|$PWD|g" launchd/com.research-digest.daily.plist
+Required GitHub Secrets (*Settings → Secrets and variables → Actions*):
 
-# 2) Install and start
-cp launchd/com.research-digest.daily.plist ~/Library/LaunchAgents/
-launchctl load -w ~/Library/LaunchAgents/com.research-digest.daily.plist
+| Secret | Purpose |
+| --- | --- |
+| `DIGEST_ANTHROPIC_API_KEY` | Claude API key |
+| `DIGEST_SMTP_PASSWORD` | Gmail 16-char app password |
+| `DIGEST_VOYAGE_API_KEY` | *(optional)* Voyage embeddings for personalization |
 
-# 3) (Optional) Run once right now to verify
-launchctl start com.research-digest.daily
-tail -f ~/.research-digest/logs/digest.err.log
-```
+Other config (sender/recipient, DB path) is hard-coded in the workflow `env`
+block — edit the YAML directly if you need to change them.
 
-Uninstall:
+Manual trigger / testing:
 
-```bash
-launchctl unload -w ~/Library/LaunchAgents/com.research-digest.daily.plist
-rm ~/Library/LaunchAgents/com.research-digest.daily.plist
-```
+- Push to `main` (touching `src/`, `pyproject.toml`, or the workflow itself)
+- *Actions → Daily Research Digest → Run workflow* (`workflow_dispatch`)
 
-If the Mac is asleep at 07:00, launchd fires the job when it wakes.
+If a run fails, an issue is auto-filed with a link to the run log.
+
+**Requirement:** the digest runner must have **read access** to
+`/root/.arxiv-graph/data/arxiv_graph.db`. Easiest if both runners run as
+`root`; otherwise `chmod o+r` the DB file or run digest under a user in
+the same group.
 
 ## What it does
 
